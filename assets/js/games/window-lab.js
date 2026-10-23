@@ -1,371 +1,398 @@
+/* Loss and retransmission drills for Go-Back-N, Selective Repeat, and TCP. */
 (function () {
-  'use strict';
+  const ROUNDS = 10;
 
-  const SCENARIOS = [
-    {
-      level: 1, type: 'arrival', base: 1, packet: 1, window: 4, buffered: [],
-      state: 'Both receivers expect packet 1. Packet 1 arrives intact and in order.',
-      q: 'Predict the receiver action and ACK behavior in each protocol.',
-      why: 'Both receivers deliver the in-order packet. GBN ACKs the highest in-order packet cumulatively; SR sends an individual ACK for that packet. With no gap, both ACK number 1.'
-    },
-    {
-      level: 1, type: 'arrival', base: 2, packet: 4, window: 4, buffered: [],
-      state: 'Both receivers expect packet 2. Packet 2 was lost; intact packet 4 arrives out of order.',
-      q: 'What does each receiver do with packet 4?',
-      why: 'Textbook GBN discards out-of-order packet 4 and re-sends ACK(1), the last in-order packet. SR accepts packet 4 inside its receive window, buffers it, and individually ACKs 4 without delivering past the gap.'
-    },
-    {
-      level: 2, type: 'arrival', base: 2, packet: 2, window: 4, buffered: [3],
-      state: 'Packet 3 already arrived while packet 2 was missing: GBN discarded it, while SR buffered it and sent ACK(3). Now intact packet 2 arrives.',
-      q: 'How does filling the gap change delivery and ACKs?',
-      why: 'GBN delivers packet 2 and ACKs 2; it had discarded packet 3, so packet 3 must arrive again. SR delivers packet 2 and the already-buffered packet 3 in order, then individually ACKs packet 2 (ACK(3) was sent earlier).'
-    },
-    {
-      level: 2, type: 'timeout', base: 2, next: 5, timed: 3, acked: [],
-      state: 'Packets 2, 3, and 4 were sent and remain unacknowledged. The timer for packet 3 expires.',
-      q: 'Which data packets are retransmitted?',
-      why: 'GBN has one timer for the oldest unacknowledged packet and resends every sent, unACKed packet from base through next-1. SR has a logical timer per packet and resends only the packet whose timer expired.'
-    },
-    {
-      level: 2, type: 'ack', base: 2, next: 6, ack: 4, acked: [],
-      state: 'Packets 2 through 5 were sent; the sender receives ACK(4). No earlier packets in this window were acknowledged.',
-      q: 'How does this ACK affect each sender window?',
-      why: 'GBN ACK(4) is cumulative, so all packets through 4 are acknowledged and base moves to 5. SR ACK(4) marks only packet 4; because packet 2 is still the smallest unacknowledged packet, its base stays at 2.'
-    },
-    {
-      level: 2, type: 'arrival', base: 4, packet: 2, window: 4, buffered: [],
-      state: 'The receiver has already delivered packets through 3. A retransmitted packet 2 arrives intact after its ACK was lost.',
-      q: 'What acknowledgment comes back, and is packet 2 delivered again?',
-      why: 'GBN discards this old duplicate and re-ACKs the highest in-order packet, ACK(3). SR recognizes packet 2 in its recently received range, sends ACK(2) again, and does not deliver the data twice.'
-    },
-    {
-      level: 3, type: 'arrival', base: 3, packet: 3, window: 4, buffered: [4],
-      state: 'Packet 4 arrived earlier while packet 3 was missing: GBN discarded it and sent ACK(2); SR buffered it and sent ACK(4). Now packet 3 arrives intact.',
-      q: 'What does each receiver deliver now?',
-      why: 'GBN delivers packet 3 and ACKs 3; it has no buffered packet 4 to release. SR delivers packet 3 followed by buffered packet 4, slides its receive window to 5, and sends individual ACK(3).'
-    },
-    {
-      level: 3, type: 'timeout', base: 2, next: 6, timed: 4, acked: [3, 5],
-      state: 'Packets 2 through 5 were sent. In the SR sender, packets 3 and 5 are already individually ACKed; packet 4 times out. In GBN, the outstanding range is 2 through 5.',
-      q: 'Which packets does each sender retransmit?',
-      why: 'GBN retransmits the full sent-but-unACKed range, packets 2–5. SR retransmits only timed-out packet 4; it does not resend the already ACKed packets 3 or 5.'
-    },
-    {
-      level: 3, type: 'ack-loss', base: 1, next: 4, ack: 2, timed: 1,
-      state: 'Packets 1–3 all reached the receiver. ACK(1) was lost; ACK(2) arrives before packet 1’s timer expires.',
-      q: 'If recovery is needed for packet 1, what does each sender do?',
-      why: 'GBN ACK(2) cumulatively covers packets 1 and 2, so packet 1 does not time out and need retransmission. SR ACK(2) covers only packet 2; missing ACK(1) leaves packet 1 outstanding, so its timer causes packet 1 alone to be resent.'
-    },
-    {
-      level: 3, type: 'tcp',
-      state: 'A later TCP segment arrives while an earlier byte range is missing.',
-      q: 'Which statement describes TCP relative to these two textbook protocols?',
-      choices: [
-        'TCP is exactly GBN: it discards all out-of-order data and retransmits every later segment on timeout.',
-        'TCP is exactly SR: it uses only individual ACKs and one timer for every segment.',
-        'TCP combines features: cumulative ACKs and one timer, often buffers out-of-order data, and SACK can report ranges; it is not exactly GBN or SR.',
-        'TCP does not acknowledge data until every segment in the connection has arrived.'
-      ], answer: 2,
-      why: 'TCP uses cumulative ACKs and a timer for the oldest unACKed data, while implementations commonly buffer out-of-order data; SACK can report received ranges. The guide describes TCP recovery as a hybrid, not an exact implementation of GBN or SR.'
-    }
-  ];
-
-  function seqRange(first, endExclusive) {
-    const out = [];
-    for (let n = first; n < endExclusive; n++) out.push(n);
-    return out;
+  function list(values) {
+    if (values.length === 1) return String(values[0]);
+    if (values.length === 2) return `${values[0]} and ${values[1]}`;
+    return `${values.slice(0, -1).join(', ')}, and ${values[values.length - 1]}`;
   }
 
-  function receiverDecision(protocol, base, packet, window, priorBuffer) {
-    if (protocol === 'GBN') {
-      if (packet === base) return { action: 'deliver', delivered: [packet], ack: packet, nextBase: base + 1 };
-      return { action: 'discard', delivered: [], ack: base - 1, nextBase: base };
-    }
-    if (packet >= base && packet < base + window) {
-      const buffered = new Set(priorBuffer || []);
-      buffered.add(packet);
-      const delivered = [];
-      let nextBase = base;
-      while (buffered.has(nextBase)) {
-        buffered.delete(nextBase);
-        delivered.push(nextBase);
-        nextBase++;
-      }
-      return {
-        action: packet === base ? 'accept' : 'buffer',
-        delivered,
-        ack: packet,
-        nextBase,
-        buffered: Array.from(buffered).sort((a, b) => a - b)
-      };
-    }
-    if (packet >= base - window && packet < base) {
-      return { action: 're-ack', delivered: [], ack: packet, nextBase: base };
-    }
-    return { action: 'ignore', delivered: [], ack: null, nextBase: base };
+  function packetList(packets) {
+    return list(packets.map(x => `pkt${x}`));
   }
 
-  function gbnTimeout(base, next) {
-    return seqRange(base, next);
+  function pickChoices(kit, correct, wrong) {
+    const choices = Array.from(new Set([correct].concat(wrong))).slice(0, 4);
+    let filler = 1;
+    while (choices.length < 4) {
+      const extra = `None of these (${filler++})`;
+      if (extra !== correct) choices.push(extra);
+    }
+    return kit.shuffle(choices);
   }
 
-  function srTimeout(packet, next, acked) {
-    const sent = packet >= 0 && packet < next;
-    return sent && !(acked || []).includes(packet) ? [packet] : [];
+  function packetScenario(kit, level) {
+    const count = level === 1 ? 5 : level === 2 ? 6 : kit.pick([6, 7]);
+    const start = kit.pick([0, 1, 2, 4, 8]);
+    // Keep at least two later packets for the out-of-order comparison.
+    const lostIndex = level === 1 ? 1 : kit.rand(1, count - 3);
+    const packets = Array.from({ length: count }, (_, i) => start + i);
+    return { start, packets, lostIndex, lost: packets[lostIndex] };
   }
 
-  function gbnBaseAfterAck(base, ack) {
-    return Math.max(base, ack + 1);
+  function tcpScenario(kit, laterCount) {
+    const starts = kit.pick([92, 120, 200, 400, 1000]);
+    const lengths = kit.shuffle([6, 8, 12, 15, 20, 24]).slice(0, laterCount + 2);
+    const segments = [];
+    let seq = starts;
+    lengths.forEach((length, i) => {
+      segments.push({ seq, length, end: seq + length });
+      seq += length;
+    });
+    return { segments, missing: segments[1], finalAck: segments[segments.length - 1].end };
   }
 
-  function srBaseAfterAck(base, ack, acked) {
-    const set = new Set(acked || []);
-    set.add(ack);
-    let nextBase = base;
-    while (set.has(nextBase)) nextBase++;
-    return { nextBase, acked: Array.from(set).sort((a, b) => a - b) };
+  function gbnAckRound(kit, level) {
+    const s = packetScenario(kit, level);
+    const prior = s.packets[s.lostIndex - 1];
+    const later = s.packets.slice(s.lostIndex + 1);
+    const correct = `ACK${prior}`;
+    return {
+      protocol: 'GBN', level, scenario: s,
+      title: 'Cumulative ACK after a gap',
+      question: `${packetList(later)} arrive after pkt${s.lost} was lost. What ACK does the GBN receiver send for the final out-of-order arrival?`,
+      choices: pickChoices(kit, correct, [`ACK${s.lost}`, `ACK${later[later.length - 1]}`, `ACK${later[later.length - 1] + 1}`]),
+      answer: correct,
+      why: `GBN discards each out-of-order packet and re-ACKs the most recently received in-order packet. That packet is pkt${prior}, so the receiver repeats ${correct}.`,
+      trace: `Receiver delivered ${packetList(s.packets.slice(0, s.lostIndex))}; it discards ${packetList(later)} and sends duplicate ${correct}s.`,
+    };
   }
 
-  function listPackets(items) {
-    return items.length ? items.map(n => `packet ${n}`).join(', ') : 'none';
+  function gbnResendRound(kit, level) {
+    const s = packetScenario(kit, level);
+    const resent = s.packets.slice(s.lostIndex);
+    const correct = packetList(resent);
+    return {
+      protocol: 'GBN', level, scenario: s,
+      title: 'Single timer, go back',
+      question: `All packets through pkt${s.packets[s.packets.length - 1]} were sent, but pkt${s.lost} was lost. When the timer for the oldest unACKed packet expires, what does the sender retransmit?`,
+      choices: pickChoices(kit, correct, [`pkt${s.lost}`, packetList(s.packets.slice(0, s.lostIndex + 1)), packetList(s.packets)]),
+      answer: correct,
+      why: `GBN has one timer for the oldest unACKed packet. On timeout it resends every sent but unACKed packet, from pkt${s.lost} through pkt${s.packets[s.packets.length - 1]}.`,
+      trace: `GBN retransmits ${correct}. The earlier packets were cumulatively ACKed, so they are not resent.`,
+    };
   }
 
-  function receiverSummary(protocol, result) {
-    const ackKind = protocol === 'GBN' ? 'cumulative' : 'individual';
-    if (result.action === 'deliver') {
-      return `deliver ${listPackets(result.delivered)}; ${ackKind} ACK(${result.ack})`;
-    }
-    if (result.action === 'accept') {
-      return `deliver ${listPackets(result.delivered)}; ${ackKind} ACK(${result.ack})`;
-    }
-    if (result.action === 'buffer') {
-      return `buffer the packet; send ${ackKind} ACK(${result.ack}); deliver none yet`;
-    }
-    if (result.action === 'discard') {
-      return `discard the packet; re-send ${ackKind} ACK(${result.ack})`;
-    }
-    if (result.action === 're-ack') {
-      return `do not deliver again; re-send ${ackKind} ACK(${result.ack})`;
-    }
-    return 'ignore the packet and send no ACK';
+  function gbnDeliveryRound(kit, level) {
+    const s = packetScenario(kit, level);
+    const delivered = packetList(s.packets.slice(0, s.lostIndex));
+    const correct = delivered;
+    return {
+      protocol: 'GBN', level, scenario: s,
+      title: 'Receiver behavior',
+      question: `Before timeout recovery, which packets has the textbook GBN receiver delivered after pkt${s.lost} was lost?`,
+      choices: pickChoices(kit, correct, [packetList(s.packets), packetList(s.packets.slice(s.lostIndex + 1)), `None; it waits for all ACKs`]),
+      answer: correct,
+      why: `The GBN receiver delivers only an in-order prefix. It discards packets arriving after the missing pkt${s.lost}, so it has delivered only ${correct}.`,
+      trace: `Expected next packet: pkt${s.lost}. Later arrivals are out of order, discarded, and answered with a duplicate ACK for pkt${s.packets[s.lostIndex - 1]}.`,
+    };
   }
 
-  function makeComparison(r) {
-    const g = receiverDecision('GBN', r.base, r.packet, r.window, []);
-    const s = receiverDecision('SR', r.base, r.packet, r.window, r.buffered);
-    return `GBN: ${receiverSummary('GBN', g)}. SR: ${receiverSummary('SR', s)}.`;
+  function srAckRound(kit, level) {
+    const s = packetScenario(kit, level);
+    const later = s.packets.slice(s.lostIndex + 1);
+    const correct = `ACK${later[later.length - 1]}`;
+    return {
+      protocol: 'SR', level, scenario: s,
+      title: 'Selective ACK',
+      question: `pkt${s.lost} is lost, then ${packetList(later)} arrive inside the receive window. What ACK is sent for the final later packet?`,
+      choices: pickChoices(kit, correct, [`ACK${s.packets[s.lostIndex - 1]}`, `ACK${s.lost}`, `ACK${later[later.length - 1] + 1}`]),
+      answer: correct,
+      why: `Selective Repeat individually ACKs every correctly received packet inside its receive window, including an out-of-order one. The final later arrival is pkt${later[later.length - 1]}, so it gets ${correct}.`,
+      trace: `The receiver buffers ${packetList(later)} and sends one ACK for each of them. Delivery waits for pkt${s.lost}.`,
+    };
   }
 
-  function solve(r) {
-    if (r.type === 'arrival') return makeComparison(r);
-    if (r.type === 'timeout') {
-      const g = gbnTimeout(r.base, r.next);
-      const s = srTimeout(r.timed, r.next, r.acked);
-      return `GBN retransmits ${listPackets(g)}. SR retransmits ${listPackets(s)}.`;
-    }
-    if (r.type === 'ack') {
-      const gbnBase = gbnBaseAfterAck(r.base, r.ack);
-      const sr = srBaseAfterAck(r.base, r.ack, r.acked);
-      return `GBN treats ACK(${r.ack}) cumulatively; base moves to ${gbnBase}. SR marks only packet ${r.ack}; base stays at ${sr.nextBase}.`;
-    }
-    if (r.type === 'ack-loss') {
-      const gbnBase = gbnBaseAfterAck(r.base, r.ack);
-      const sr = srBaseAfterAck(r.base, r.ack, []);
-      const gExpired = r.timed >= gbnBase;
-      const sResent = srTimeout(r.timed, r.next, sr.acked);
-      return `GBN: ACK(${r.ack}) covers packet ${r.timed}, so base moves to ${gbnBase} and packet ${r.timed} is not resent. SR: ACK(${r.ack}) covers only packet ${r.ack}; base stays at ${sr.nextBase}, so timeout resends ${listPackets(sResent)}.`;
-    }
-    return r.choices[r.answer];
+  function srResendRound(kit, level) {
+    const s = packetScenario(kit, level);
+    const correct = `pkt${s.lost}`;
+    return {
+      protocol: 'SR', level, scenario: s,
+      title: 'Per-packet timer',
+      question: `The ACKs for every received packet arrive at the SR sender, but pkt${s.lost} was lost. When its timer expires, what does the sender retransmit?`,
+      choices: pickChoices(kit, correct, [packetList(s.packets.slice(s.lostIndex)), packetList(s.packets), `pkt${s.packets[s.lostIndex - 1]}`]),
+      answer: correct,
+      why: `SR keeps a logical timer for each unACKed packet. The later packets are already selectively ACKed, so only the missing ${correct} is retransmitted.`,
+      trace: `SR retransmits ${correct}; the buffered, already ACKed later packets are not sent again.`,
+    };
   }
 
-  function wrongOptions(r, correct) {
-    if (r.type === 'arrival') {
-      const g = receiverDecision('GBN', r.base, r.packet, r.window, []);
-      const s = receiverDecision('SR', r.base, r.packet, r.window, r.buffered);
-      const swapped = `GBN: ${receiverSummary('GBN', Object.assign({}, s, { action: s.action === 'accept' ? 'deliver' : s.action }))}. SR: ${receiverSummary('SR', Object.assign({}, g, { action: g.action === 'deliver' ? 'accept' : g.action }))}.`;
-      return [
-        swapped,
-        `GBN buffers packet ${r.packet} and individually ACKs it; SR discards it and repeats ACK(${r.base - 1}).`,
-        `GBN and SR both discard packet ${r.packet}, then re-send ACK(${r.base - 1}).`
-      ];
-    }
-    if (r.type === 'timeout') {
-      return [
-        `GBN retransmits ${listPackets([r.timed])}. SR retransmits ${listPackets(gbnTimeout(r.base, r.next))}.`,
-        `GBN retransmits ${listPackets(seqRange(r.base, r.next).filter(n => n !== r.timed))}. SR retransmits ${listPackets([])}.`,
-        'GBN and SR both retransmit every packet in the sender window.'
-      ];
-    }
-    if (r.type === 'ack') {
-      return [
-        `GBN marks only packet ${r.ack}; base stays at ${r.base}. SR treats it cumulatively; base moves to ${r.ack + 1}.`,
-        `Both protocols treat ACK(${r.ack}) cumulatively and move base to ${r.ack + 1}.`,
-        `Neither sender can advance its window until every sent packet is ACKed individually.`
-      ];
-    }
-    if (r.type === 'ack-loss') {
-      return [
-        `GBN retransmits packet ${r.timed} because ACK(${r.ack}) only covers packet ${r.ack}. SR does not retransmit it because ACK(${r.ack}) is cumulative.`,
-        'Both protocols avoid retransmission because ACK(2) covers packets 1 and 2.',
-        'GBN resends packets 1–3; SR resends packets 1–3.'
-      ];
-    }
-    return [
-      'TCP uses cumulative ACKs and discards all out-of-order data, so it is exactly GBN.',
-      'TCP uses only individual ACKs and one timer per segment, so it is exactly SR.',
-      'TCP does not buffer data or retransmit lost segments.'
-    ];
+  function srDeliveryRound(kit, level) {
+    const s = packetScenario(kit, level);
+    const later = s.packets.slice(s.lostIndex + 1);
+    const correct = packetList(s.packets);
+    return {
+      protocol: 'SR', level, scenario: s,
+      title: 'Buffered in-order delivery',
+      question: `SR has buffered ${packetList(later)} while waiting for pkt${s.lost}. pkt${s.lost} now arrives. Which packets can it deliver in order?`,
+      choices: pickChoices(kit, correct, [`pkt${s.lost}`, packetList(later), packetList(s.packets.slice(0, s.lostIndex))]),
+      answer: correct,
+      why: `Once pkt${s.lost} fills the gap, it joins the buffered consecutive run. SR delivers pkt${s.lost} and every buffered packet that follows it, completing ${correct}.`,
+      trace: `The receive base moves past the filled gap and drains the buffer through pkt${s.packets[s.packets.length - 1]}.`,
+    };
+  }
+
+  function comparisonRound(kit, level) {
+    const s = packetScenario(kit, level);
+    const gbnCount = s.packets.length - s.lostIndex;
+    const correct = `GBN: ${gbnCount}; SR: 1`;
+    return {
+      protocol: 'Compare', level, scenario: s,
+      title: 'Cost of one loss',
+      question: `All ${s.packets.length} packets were sent; pkt${s.lost} was lost and every later packet arrives. How many data packets are retransmitted after timeout under each protocol?`,
+      choices: pickChoices(kit, correct, [`GBN: 1; SR: ${gbnCount}`, `GBN: ${s.packets.length}; SR: ${s.packets.length}`, `GBN: 0; SR: 0`]),
+      answer: correct,
+      why: `GBN retransmits the missing packet plus every later sent-but-unACKed packet, ${gbnCount} in total. SR has ACKed the later packets individually, so it retransmits only pkt${s.lost}.`,
+      trace: `GBN sends ${packetList(s.packets.slice(s.lostIndex))} again. SR sends pkt${s.lost} again.`,
+    };
+  }
+
+  function windowRuleRound(kit, protocol) {
+    const k = kit.pick([3, 4, 5]);
+    const max = protocol === 'GBN' ? Math.pow(2, k) - 1 : Math.pow(2, k - 1);
+    const correct = `${max} packets`;
+    const label = protocol === 'GBN' ? 'Go-Back-N' : 'Selective Repeat';
+    const wrong = protocol === 'GBN'
+      ? [`${Math.pow(2, k - 1)} packets`, `${Math.pow(2, k)} packets`, `${Math.pow(2, k) - 2} packets`]
+      : [`${Math.pow(2, k) - 1} packets`, `${Math.pow(2, k)} packets`, `${Math.pow(2, k - 2)} packets`];
+    return {
+      protocol: label, level: 3, scenario: null,
+      title: 'Window and sequence space',
+      question: `${label} uses a ${k}-bit packet sequence number. What is the largest safe sender window?`,
+      choices: pickChoices(kit, correct, wrong),
+      answer: correct,
+      why: protocol === 'GBN'
+        ? `GBN can use at most 2^${k} − 1 = ${max}: one sequence number stays unused to avoid ambiguity.`
+        : `SR needs a window no larger than half the sequence space: 2^${k} / 2 = ${max}. Otherwise an old retransmission can look new.`,
+      trace: protocol === 'GBN' ? `Sequence space: 0 through ${Math.pow(2, k) - 1}; one value stays outside a full GBN window.` : `Sequence space: 0 through ${Math.pow(2, k) - 1}; SR’s send and receive windows must occupy at most half of it.`,
+    };
+  }
+
+  function tcpDuplicateAckRound(kit) {
+    const s = tcpScenario(kit, 3);
+    const correct = `ACK ${s.missing.seq}`;
+    const later = s.segments.slice(2);
+    return {
+      protocol: 'TCP', level: 2, scenario: s,
+      title: 'Duplicate ACK for a gap',
+      question: `The segment starting at seq ${s.missing.seq} is lost. A later segment starting at seq ${later[0].seq} arrives. Which immediate ACK does TCP send?`,
+      choices: pickChoices(kit, correct, [`ACK ${later[0].end}`, `ACK ${s.finalAck}`, `ACK ${later[0].seq}`]),
+      answer: correct,
+      why: `TCP’s ACK number is the next byte expected. The missing segment begins at ${s.missing.seq}, so the out-of-order arrival produces duplicate ${correct}.`,
+      trace: `TCP buffers the later data in this exercise and keeps its cumulative ACK at ${s.missing.seq} until the gap is filled.`,
+    };
+  }
+
+  function tcpFastRetransmitRound(kit) {
+    const s = tcpScenario(kit, 3);
+    const correct = `Seq ${s.missing.seq}`;
+    return {
+      protocol: 'TCP', level: 3, scenario: s,
+      title: 'Three duplicate ACKs',
+      question: `The first segment arrives, the segment at seq ${s.missing.seq} is lost, and the next three segments all arrive. After three duplicate ACKs, what does TCP fast retransmit?`,
+      choices: pickChoices(kit, correct, [`Seq ${s.segments[s.segments.length - 1].seq}`, `All unACKed segments`, `Nothing until every packet times out`]),
+      answer: correct,
+      why: `Three duplicate ACKs for ${s.missing.seq} mean the receiver is still missing the segment beginning at that byte. Fast retransmit resends ${correct} before its timer expires.`,
+      trace: `The receiver has one original ACK for ${s.missing.seq} plus three duplicates. That is the threshold for fast retransmit.`,
+    };
+  }
+
+  function tcpCumulativeRound(kit) {
+    const s = tcpScenario(kit, 3);
+    const correct = `ACK ${s.finalAck}`;
+    return {
+      protocol: 'TCP', level: 3, scenario: s,
+      title: 'ACK after filling the gap',
+      question: `TCP buffered all later segments after the lost segment at seq ${s.missing.seq}. When that missing segment is retransmitted and arrives, what cumulative ACK can the receiver send?`,
+      choices: pickChoices(kit, correct, [`ACK ${s.missing.end}`, `ACK ${s.missing.seq}`, `ACK ${s.segments[s.segments.length - 1].seq}`]),
+      answer: correct,
+      why: `The retransmission fills the lower edge of the gap, so the buffered bytes become contiguous. TCP ACKs the first byte after the final buffered segment: ${correct}.`,
+      trace: `Cumulative acknowledgment now covers every byte from ${s.segments[0].seq} through ${s.finalAck - 1}.`,
+    };
+  }
+
+  function tcpTimeoutRound(kit) {
+    const s = tcpScenario(kit, 2);
+    const correct = `Seq ${s.missing.seq}`;
+    return {
+      protocol: 'TCP', level: 3, scenario: s,
+      title: 'TCP timeout',
+      question: `The segment at seq ${s.missing.seq} is still the oldest unACKed segment when TCP’s timer expires. What does TCP retransmit on that timeout?`,
+      choices: pickChoices(kit, correct, [`All segments starting at seq ${s.missing.seq} or later`, `Seq ${s.segments[s.segments.length - 1].seq}`, `The newest segment and the oldest segment`]),
+      answer: correct,
+      why: `TCP has a single timer for the oldest unACKed segment. A timeout retransmits only that oldest segment, ${correct}; it does not repeat the whole outstanding window.`,
+      trace: `This is SR-like behavior: later segments remain outstanding but are not retransmitted merely because the oldest timer expires.`,
+    };
+  }
+
+  function makeRound(kit, mode, index) {
+    const mixed = ['gbnAck', 'srAck', 'gbnResend', 'srResend', 'gbnDelivery', 'srDelivery', 'compare', 'windowSR', 'tcpFast', 'tcpCumulative'];
+    const plans = {
+      gbn: ['gbnAck', 'gbnDelivery', 'gbnResend', 'gbnAck', 'gbnDelivery', 'gbnResend', 'compare', 'gbnResend', 'windowGBN', 'gbnResend'],
+      sr: ['srAck', 'srDelivery', 'srResend', 'srAck', 'srDelivery', 'srResend', 'compare', 'srResend', 'windowSR', 'srDelivery'],
+      tcp: ['tcpDup', 'tcpTimeout', 'tcpDup', 'tcpFast', 'tcpTimeout', 'tcpCum', 'tcpFast', 'tcpCum', 'tcpTimeout', 'tcpFast'],
+      mixed,
+    };
+    const type = plans[mode][index];
+    const level = index < 3 ? 1 : index < 7 ? 2 : 3;
+    if (type === 'gbnAck') return gbnAckRound(kit, level);
+    if (type === 'gbnDelivery') return gbnDeliveryRound(kit, level);
+    if (type === 'gbnResend') return gbnResendRound(kit, level);
+    if (type === 'srAck') return srAckRound(kit, level);
+    if (type === 'srDelivery') return srDeliveryRound(kit, level);
+    if (type === 'srResend') return srResendRound(kit, level);
+    if (type === 'compare') return comparisonRound(kit, level);
+    if (type === 'windowGBN') return windowRuleRound(kit, 'GBN');
+    if (type === 'windowSR') return windowRuleRound(kit, 'SR');
+    if (type === 'tcpDup') return tcpDuplicateAckRound(kit);
+    if (type === 'tcpTimeout') return tcpTimeoutRound(kit);
+    if (type === 'tcpCum') return tcpCumulativeRound(kit);
+    return tcpFastRetransmitRound(kit);
   }
 
   function addStyle() {
     if (document.getElementById('gm-window-style')) return;
-    const s = document.createElement('style');
-    s.id = 'gm-window-style';
-    s.textContent = `
-.gm-window .win-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin: 12px 0; }
-.gm-window .win-protocol { min-width: 0; padding: 10px 11px; border: 1px solid var(--rule); border-radius: var(--r-md); background: var(--surface); }
-.gm-window .win-protocol b { display: block; margin-bottom: 4px; }
-.gm-window .win-protocol p { margin: 0; color: var(--ink-2); font-size: .92rem; }
-.gm-window .win-tcp { border-left: 3px solid var(--u3); }
-.gm-window .win-answer { line-height: 1.45; }
-@media (max-width: 520px) { .gm-window .win-pair { grid-template-columns: 1fr; } }
+    const style = document.createElement('style');
+    style.id = 'gm-window-style';
+    style.textContent = `
+.gm-window .wl-packets { display: flex; gap: 8px; align-items: stretch; min-width: max-content; padding: 2px; }
+.gm-window .wl-packet { min-width: 76px; padding: 8px; border: 1px solid var(--rule-strong); border-radius: var(--r-sm); background: var(--surface); text-align: center; font-family: var(--font-mono); }
+.gm-window .wl-packet small { display: block; margin-top: 3px; font-family: var(--font-text); color: var(--ink-2); }
+.gm-window .wl-packet.is-lost { border-color: var(--nak); background: var(--nak-soft); text-decoration: line-through; }
+.gm-window .wl-arrow { align-self: center; color: var(--ink-3); font-weight: 700; }
+.gm-window .wl-flow { overflow-x: auto; margin: 0 0 12px; padding-bottom: 2px; }
+.gm-window .wl-legend { display: flex; flex-wrap: wrap; gap: 7px; margin: 0 0 8px; }
 `;
-    document.head.appendChild(s);
+    document.head.appendChild(style);
   }
 
   NET.addGame({
     id: 'window-lab',
-    title: 'Window lab',
+    title: 'Window loss lab',
     unit: 3,
     sections: ['pipelining', 'tcp-rtt'],
-    blurb: 'Compare Go-Back-N and Selective Repeat receivers, ACKs, windows, buffering, and retransmissions under loss.',
+    blurb: 'Trace packet losses through Go-Back-N, Selective Repeat, and TCP, then predict ACKs, buffering, and retransmissions.',
     how: [
-      'For each trace, predict the result under both Go-Back-N and Selective Repeat.',
-      'Track the receive base, cumulative versus individual ACKs, buffered data, and each protocol’s timeout rule.',
-      'Keys: 1–4 choose an answer, Enter continues after the explanation.'
+      'Read the sender burst and identify the highlighted lost packet or segment.',
+      'Choose the receiver or sender action. Runs start with basic ACKs and finish with window limits and TCP fast retransmit.',
+      'Use the mode chips to focus on Go-Back-N, Selective Repeat, or TCP.',
+      'Keys: 1–4 choose an answer; Enter continues after the explanation.',
     ],
     mount(root, kit) {
       addStyle();
       root.classList.add('gm-window');
-      const rounds = SCENARIOS.map(r => Object.assign({}, r));
-      const hud = kit.hud([['round', 'Round'], ['score', 'Correct'], ['|'], ['best', 'Best']]);
-      const level = kit.el('span', { class: 'g-tag' });
-      const pair = kit.el('div', { class: 'win-pair', 'aria-label': 'Protocols being compared' });
-      const gbnPanel = kit.el('div', { class: 'win-protocol' }, kit.el('b', null, 'Go-Back-N'), kit.el('p', null, 'cumulative ACK · discard out of order · one timer'));
-      const srPanel = kit.el('div', { class: 'win-protocol' }, kit.el('b', null, 'Selective Repeat'), kit.el('p', null, 'individual ACK · buffer in window · per-packet timers'));
-      pair.append(gbnPanel, srPanel);
-      const state = kit.el('div', { class: 'g-card' });
-      const stateText = kit.el('p', { style: { margin: '0' } });
-      state.append(level, stateText);
-      const tcpNote = kit.el('div', { class: 'g-card win-tcp', style: { marginTop: '10px' } },
-        kit.el('b', null, 'TCP connection'),
-        kit.el('span', null, 'TCP is a hybrid. It does not implement GBN or SR exactly.'));
-      const prompt = kit.el('p', { class: 'g-prompt' });
-      const answer = kit.el('div', { class: 'win-pair', hidden: true, 'aria-live': 'polite' });
-      const gbnResult = kit.el('div', { class: 'win-protocol' }, kit.el('b', null, 'Go-Back-N result'), kit.el('p', { class: 'win-answer' }));
-      const srResult = kit.el('div', { class: 'win-protocol' }, kit.el('b', null, 'Selective Repeat result'), kit.el('p', { class: 'win-answer' }));
-      answer.append(gbnResult, srResult);
-      const choices = kit.el('div');
-      const feedback = kit.el('div', { class: 'g-feedback', 'aria-live': 'polite' });
-      const next = kit.el('button', { class: 'btn', type: 'button', hidden: true }, 'Next round');
-      root.append(hud.node, pair, state, tcpNote, prompt, answer, choices, feedback, kit.el('div', { class: 'g-actions' }, next));
-
-      let roundIndex = 0, score = 0, answered = false, answerButtons = [];
-
-      function currentOptions(r) {
-        if (r.type === 'tcp') return { options: r.choices.slice(), right: r.answer, computed: r.choices[r.answer] };
-        const correct = solve(r);
-        const wrongs = wrongOptions(r, correct);
-        const unique = [];
-        [correct, ...wrongs].forEach(option => { if (!unique.includes(option)) unique.push(option); });
-        while (unique.length < 4) unique.push('GBN and SR follow the same rule for every arrival, ACK, and timeout.');
-        return { options: unique.slice(0, 4), right: 0, computed: correct };
-      }
-
-      function resultPanels(r, computed) {
-        answer.hidden = false;
-        if (r.type === 'tcp') {
-          gbnResult.lastChild.textContent = 'Textbook model: cumulative ACKs, discard out of order, resend all sent-unACKed packets on timeout.';
-          srResult.lastChild.textContent = 'Textbook model: individual ACKs, buffer out of order, resend only the timed-out packet.';
-        } else {
-          const parts = computed.split('. ');
-          gbnResult.lastChild.textContent = parts[0] || computed;
-          srResult.lastChild.textContent = parts.slice(1).join('. ') || computed;
-        }
-      }
-
-      function loadRound() {
-        const r = rounds[roundIndex];
-        answered = false;
-        hud.set({ round: `${roundIndex + 1}/${rounds.length}`, score, best: kit.best() });
-        level.textContent = ['Easy', 'Steady', 'Hard'][r.level - 1];
-        stateText.textContent = r.state;
-        prompt.textContent = r.q;
-        answer.hidden = true;
-        choices.replaceChildren();
-        feedback.textContent = '';
-        feedback.className = 'g-feedback';
-        next.hidden = true;
-        const data = currentOptions(r);
-        const order = kit.shuffle(data.options.map((_, i) => i));
-        const wrap = kit.el('div', { class: 'g-opts', role: 'group', 'aria-label': 'Predictions for GBN and SR' });
-        answerButtons = [];
-        order.forEach((choiceIndex, visualIndex) => {
-          const b = kit.el('button', { class: 'g-opt', type: 'button', html: `${visualIndex + 1}. ${kit.fmt(data.options[choiceIndex])}` });
-          b.addEventListener('click', () => submit(choiceIndex, b, data));
-          wrap.appendChild(b);
-          answerButtons.push({ button: b, choiceIndex });
+      let mode = NET.store.setting('windowLabMode') || 'mixed';
+      let round = 0, score = 0, answered = false, current = null;
+      const modeOptions = [['mixed', 'Compare'], ['gbn', 'Go-Back-N'], ['sr', 'Selective Repeat'], ['tcp', 'TCP']];
+      const modes = kit.el('div', { class: 'g-modes', role: 'group', 'aria-label': 'Practice mode' });
+      modeOptions.forEach(([key, label]) => {
+        const button = kit.el('button', { class: 'chip u3', type: 'button', 'aria-pressed': String(key === mode) }, label);
+        button.addEventListener('click', () => {
+          if (mode === key) return;
+          NET.store.setting('windowLabMode', key);
+          mode = key;
+          kit.restart();
         });
-        choices.appendChild(wrap);
-        if (answerButtons[0]) answerButtons[0].button.focus();
+        modes.appendChild(button);
+      });
+      const hud = kit.hud([['round', 'Round'], ['score', 'Correct'], ['|'], ['best', 'Best']]);
+      const tags = kit.el('div', { class: 'g-row', style: { marginBottom: '8px' } });
+      const visual = kit.el('div');
+      const prompt = kit.el('p', { class: 'g-prompt' });
+      const options = kit.el('div');
+      const feedback = kit.el('div', { class: 'g-feedback', 'aria-live': 'polite' });
+      const trace = kit.el('div');
+      const actions = kit.el('div', { class: 'g-actions' });
+      root.append(modes, hud.node, tags, visual, prompt, options, feedback, trace, actions);
+
+      function renderScenario(s) {
+        visual.replaceChildren();
+        if (!s) return;
+        if (s.packets) {
+          const legend = kit.el('div', { class: 'wl-legend' }, kit.el('span', { class: 'g-tag' }, 'Sender burst'), kit.el('span', { class: 'g-tag bad' }, 'Lost in the channel'));
+          const cards = [];
+          s.packets.forEach((packet, i) => {
+            cards.push(kit.el('div', { class: `wl-packet${i === s.lostIndex ? ' is-lost' : ''}` }, `pkt${packet}`, kit.el('small', null, i === s.lostIndex ? 'lost' : 'arrives')));
+            if (i < s.packets.length - 1) cards.push(kit.el('span', { class: 'wl-arrow', 'aria-hidden': 'true' }, '›'));
+          });
+          visual.append(legend, kit.el('div', { class: 'g-canvas wl-flow' }, kit.el('div', { class: 'wl-packets' }, cards)));
+          return;
+        }
+        const cards = [];
+        s.segments.forEach((segment, i) => {
+          const lost = segment === s.missing;
+          cards.push(kit.el('div', { class: `wl-packet${lost ? ' is-lost' : ''}` }, `seq ${segment.seq}`, kit.el('small', null, lost ? `${segment.length} bytes, lost` : `${segment.length} bytes`)));
+          if (i < s.segments.length - 1) cards.push(kit.el('span', { class: 'wl-arrow', 'aria-hidden': 'true' }, '›'));
+        });
+        visual.append(kit.el('div', { class: 'wl-legend' }, kit.el('span', { class: 'g-tag' }, 'TCP sender burst'), kit.el('span', { class: 'g-tag bad' }, 'Lost segment')), kit.el('div', { class: 'g-canvas wl-flow' }, kit.el('div', { class: 'wl-packets' }, cards)));
       }
 
-      function submit(choiceIndex, picked, data) {
+      function updateHud() {
+        hud.set({ round: `${round + 1}/${ROUNDS}`, score, best: kit.best() });
+      }
+
+      function load() {
+        current = makeRound(kit, mode, round);
+        answered = false;
+        updateHud();
+        tags.replaceChildren(kit.el('span', { class: 'g-tag' }, current.protocol), kit.el('span', { class: 'g-tag' }, ['Easy', 'Medium', 'Hard'][current.level - 1]));
+        renderScenario(current.scenario);
+        prompt.textContent = current.question;
+        trace.replaceChildren();
+        actions.replaceChildren();
+        kit.feedback(feedback, '', '');
+        const choices = kit.choices(current.choices.map((choice, i) => `${i + 1}. ${choice}`), choose);
+        options.replaceChildren(choices);
+        options.buttons = choices.buttons;
+      }
+
+      function choose(index) {
         if (answered) return;
         answered = true;
-        const r = rounds[roundIndex];
-        const correct = choiceIndex === data.right;
+        const buttons = options.buttons;
+        const picked = current.choices[index];
+        const rightIndex = current.choices.indexOf(current.answer);
+        const correct = picked === current.answer;
+        kit.lock(buttons);
+        buttons[rightIndex].classList.add('is-right');
+        if (!correct) buttons[index].classList.add('is-wrong');
         if (correct) score++;
-        answerButtons.forEach(({ button, choiceIndex: i }) => {
-          button.disabled = true;
-          if (i === data.right) button.classList.add('is-right');
-          else if (button === picked) button.classList.add('is-wrong');
-        });
-        resultPanels(r, data.computed);
-        kit.feedback(feedback, correct ? 'good' : 'bad', `${correct ? 'Correct. ' : 'Not quite. '}${r.why}`);
-        hud.set({ score });
-        next.textContent = roundIndex === rounds.length - 1 ? 'See score' : 'Next round';
-        next.hidden = false;
+        updateHud();
+        kit.feedback(feedback, correct ? 'good' : 'bad', `${correct ? '**Correct.** ' : `**Not quite.** ${current.why}`}${correct ? current.why : ''}`);
+        trace.replaceChildren(kit.el('div', { class: 'g-card' }, kit.el('strong', null, 'Trace'), kit.el('p', { style: { margin: '6px 0 0' } }, current.trace)));
+        const next = kit.el('button', { class: 'btn', type: 'button' }, round === ROUNDS - 1 ? 'See score' : 'Next round');
+        next.addEventListener('click', advance);
+        actions.appendChild(next);
         next.focus();
       }
 
       function advance() {
-        if (!answered) return;
-        roundIndex++;
-        if (roundIndex >= rounds.length) {
+        round++;
+        if (round >= ROUNDS) {
           kit.finish({
             score,
-            headline: `${score} / ${rounds.length}`,
-            summary: 'GBN trades a simple receiver for cumulative ACKs and broad retransmission. SR buffers and ACKs selectively to resend less. TCP combines features of both models and is not exactly either one.',
-            againLabel: 'Play again'
+            headline: `${score} / ${ROUNDS}`,
+            summary: score >= 8
+              ? 'You can trace the key difference: GBN repeats the outstanding suffix, while SR preserves and ACKs later packets individually.'
+              : 'Follow the receiver first: GBN discards an out-of-order packet, SR buffers and ACKs it, and TCP keeps a cumulative ACK for the first missing byte.',
           });
           return;
         }
-        loadRound();
+        load();
       }
 
-      next.addEventListener('click', advance);
       kit.onKey(e => {
         if (!answered && /^[1-4]$/.test(e.key)) {
           e.preventDefault();
-          const entry = answerButtons[Number(e.key) - 1];
-          if (entry) entry.button.click();
-        } else if (answered && e.key === 'Enter' && e.target !== next) {
+          options.buttons[+e.key - 1].click();
+        } else if (answered && e.key === 'Enter' && !e.defaultPrevented && !(e.target && e.target.tagName === 'BUTTON')) {
           e.preventDefault();
-          advance();
+          const next = actions.querySelector('button');
+          if (next) next.click();
         }
       });
-      loadRound();
-    }
+      load();
+    },
   });
 })();

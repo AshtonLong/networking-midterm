@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Game harness</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Atkinson+Hyperlegible+Next:ital,wght@0,400;0,600;0,700;1,400&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/styles.css">
+</head>
+<body>
+<!-- Dev harness: open tools/game-harness.html?game=<id>[&theme=dark] to mount one game in isolation. -->
+<main class="game-page">
+  <div class="game-head"><div><h1 id="title">Loading…</h1><p id="blurb"></p></div>
+    <div class="btn-row"><button class="btn secondary small" id="theme">Toggle theme</button><button class="btn secondary small" id="remount">Remount</button></div></div>
+  <details class="how" open><summary>How to play</summary><ul id="how"></ul></details>
+  <div class="g-stage" id="stage"></div>
+</main>
+<script src="../assets/js/core.js"></script>
+<script src="../assets/js/kit.js"></script>
+<script>
+  const params = new URLSearchParams(location.search);
+  const id = params.get('game');
+  if (params.get('theme') === 'dark') document.documentElement.dataset.theme = 'dark';
+  document.getElementById('theme').onclick = () => {
+    const r = document.documentElement; r.dataset.theme = r.dataset.theme === 'dark' ? 'light' : 'dark';
+  };
+  const s = document.createElement('script');
+  s.src = '../assets/js/games/' + id + '.js';
+  s.onload = () => {
+    const g = NET.gameById[id];
+    if (!g) { document.getElementById('title').textContent = 'Game "' + id + '" did not register'; return; }
+    document.getElementById('title').textContent = g.title;
+    document.getElementById('blurb').textContent = g.blurb;
+    const how = document.getElementById('how');
+    (g.how || []).forEach(h => { const li = document.createElement('li'); li.innerHTML = NET.fmt(h); how.appendChild(li); });
+    let kit, cleanup;
+    function mount() {
+      if (kit) kit._destroy();
+      if (typeof cleanup === 'function') cleanup();
+      const stage = document.getElementById('stage');
+      stage.innerHTML = '';
+      kit = NET.makeKit(g, stage, mount);
+      cleanup = g.mount(stage, kit);
+    }
+    document.getElementById('remount').onclick = mount;
+    mount();
+  };
+  s.onerror = () => { document.getElementById('title').textContent = 'Could not load games/' + id + '.js'; };
+  document.body.appendChild(s);
+</script>
+</body>
+</html>

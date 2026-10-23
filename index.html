@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Top-down cram: networking midterm</title>
+<meta name="description" content="Cram guide for a computer networking midterm: Kurose & Ross chapters 1–3 and the lecture cheat sheet, with recall-mode guides, quizzes and games.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Atkinson+Hyperlegible+Next:ital,wght@0,400;0,600;0,700;1,400&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231c232d'/%3E%3Crect x='6' y='8' width='4' height='16' fill='%23d9661a'/%3E%3Crect x='12' y='8' width='4' height='16' fill='%232457c5'/%3E%3Crect x='18' y='8' width='4' height='16' fill='%2316884a'/%3E%3Crect x='24' y='8' width='3' height='16' fill='%238a5733'/%3E%3C/svg%3E">
+<script>
+  // set theme before first paint
+  try {
+    var s = JSON.parse(localStorage.getItem('topdown-cram-v1') || '{}');
+    var t = s.settings && s.settings.theme;
+    if (!t) t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  } catch (e) {}
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="#/" aria-label="Top-down cram home">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      Top-down cram
+    </a>
+    <nav class="tabs" aria-label="Main">
+      <a class="tab" data-tab="map" href="#/">Map</a>
+      <a class="tab" data-tab="guide" href="#/guide">Guide</a>
+      <a class="tab" data-tab="quiz" href="#/quiz">Quiz</a>
+      <a class="tab" data-tab="games" href="#/games">Games</a>
+      <a class="tab" data-tab="review" href="#/review">Review<span class="count" id="review-count" hidden>0</span></a>
+    </nav>
+    <div class="topbar-tools">
+      <button class="icon-btn" id="search-btn" type="button" aria-label="Search (press /)">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M13 13l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <kbd aria-hidden="true">/</kbd>
+      </button>
+      <button class="icon-btn" id="theme-btn" type="button" aria-label="Toggle theme">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 3a7 7 0 0 1 0 14z" fill="currentColor"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main" tabindex="-1"></main>
+
+<footer class="site-foot">
+  <span>Built from the class cheat sheet and Kurose &amp; Ross, Computer Networking: A Top-Down Approach, 8th edition, chapters 1–3 (through §3.5.4). Progress is saved in this browser only.</span>
+  <button type="button" id="reset-btn">Clear my progress</button>
+</footer>
+
+<script src="assets/js/core.js"></script>
+<script src="assets/js/kit.js"></script>
+<script src="assets/js/diagrams.js"></script>
+
+<!-- guide content -->
+<script src="data/guide/foundations.js"></script>
+<script src="data/guide/switching.js"></script>
+<script src="data/guide/layers.js"></script>
+<script src="data/guide/internetworking.js"></script>
+<script src="data/guide/edge.js"></script>
+<script src="data/guide/delay.js"></script>
+<script src="data/guide/app-principles.js"></script>
+<script src="data/guide/http.js"></script>
+<script src="data/guide/http-messages.js"></script>
+<script src="data/guide/http-advanced.js"></script>
+<script src="data/guide/dns.js"></script>
+<script src="data/guide/email.js"></script>
+<script src="data/guide/p2p.js"></script>
+<script src="data/guide/sockets.js"></script>
+<script src="data/guide/transport-intro.js"></script>
+<script src="data/guide/mux.js"></script>
+<script src="data/guide/udp.js"></script>
+<script src="data/guide/rdt-basics.js"></script>
+<script src="data/guide/rdt3.js"></script>
+<script src="data/guide/pipelining.js"></script>
+<script src="data/guide/tcp-basics.js"></script>
+<script src="data/guide/tcp-rtt.js"></script>
+
+<!-- question banks -->
+<script src="data/quiz/foundations.js"></script>
+<script src="data/quiz/switching.js"></script>
+<script src="data/quiz/layers.js"></script>
+<script src="data/quiz/internetworking.js"></script>
+<script src="data/quiz/edge.js"></script>
+<script src="data/quiz/delay.js"></script>
+<script src="data/quiz/app-principles.js"></script>
+<script src="data/quiz/http.js"></script>
+<script src="data/quiz/http-messages.js"></script>
+<script src="data/quiz/http-advanced.js"></script>
+<script src="data/quiz/dns.js"></script>
+<script src="data/quiz/email.js"></script>
+<script src="data/quiz/p2p.js"></script>
+<script src="data/quiz/sockets.js"></script>
+<script src="data/quiz/transport-intro.js"></script>
+<script src="data/quiz/mux.js"></script>
+<script src="data/quiz/udp.js"></script>
+<script src="data/quiz/rdt-basics.js"></script>
+<script src="data/quiz/rdt3.js"></script>
+<script src="data/quiz/pipelining.js"></script>
+<script src="data/quiz/tcp-basics.js"></script>
+<script src="data/quiz/tcp-rtt.js"></script>
+
+<!-- games -->
+<script src="assets/js/games/encap.js"></script>
+<script src="assets/js/games/delaylab.js"></script>
+<script src="assets/js/games/match-blitz.js"></script>
+<script src="assets/js/games/number-crunch.js"></script>
+<script src="assets/js/games/http-timeline.js"></script>
+<script src="assets/js/games/http-dissect.js"></script>
+<script src="assets/js/games/dns-resolver.js"></script>
+<script src="assets/js/games/code-order.js"></script>
+<script src="assets/js/games/demux.js"></script>
+<script src="assets/js/games/checksum.js"></script>
+<script src="assets/js/games/rdt-sim.js"></script>
+<script src="assets/js/games/window-lab.js"></script>
+<script src="assets/js/games/seq-ack.js"></script>
+<script src="assets/js/games/rtt-estimator.js"></script>
+
+<script src="assets/js/quiz.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

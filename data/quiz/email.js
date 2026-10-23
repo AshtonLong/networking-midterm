@@ -1,0 +1,285 @@
+NET.addQuestions('email', [
+  // ---------- Components and roles ----------
+  { id: 'email-01', d: 1, type: 'mc', src: 'cheat',
+    q: 'What are the three major components of the Internet mail system?',
+    choices: ['Browsers, routers, SMTP', 'User agents, mail servers, SMTP', 'User agents, DNS servers, HTTP', 'Mail servers, proxy caches, IMAP'],
+    a: 1,
+    why: 'Figure 2.14: user agents (what people use), mail servers (mailboxes and queues, the core of the infrastructure) and SMTP (server-to-server transfer). IMAP, HTTP and DNS are used along the way, but they are not the three named components.' },
+
+  { id: 'email-02', d: 1, type: 'multi', src: 'cheat',
+    q: 'Which of these are jobs of an e-mail user agent (mail reader)? Select all that apply.',
+    choices: ['Save messages', 'Relay messages between mail servers with SMTP', 'Reply to and forward messages', 'Hold the user’s mailbox online 24/7 so mail can arrive at any time', 'Compose and edit messages', 'Read messages'],
+    a: [0, 2, 4, 5],
+    why: 'A user agent is for composing, editing, reading, replying, forwarding and saving. Relaying between servers and keeping an always-on mailbox are mail-server jobs, which is exactly why the mailbox lives on a server and not on the user’s device.' },
+
+  { id: 'email-03', d: 1, type: 'mc', src: 'cheat',
+    q: 'Inside a mail server, what is the difference between a mailbox and the message queue?',
+    choices: ['A mailbox holds a user’s incoming messages; the message queue holds outgoing messages waiting to be sent', 'A mailbox holds outgoing messages; the queue holds incoming messages', 'Both hold incoming messages, sorted by sender', 'The queue stores DNS records needed to deliver mail'],
+    a: 0,
+    why: 'Each user has a mailbox of incoming mail. The single outgoing message queue holds mail the server still has to send, including mail it is retrying because the destination server was unreachable.' },
+
+  { id: 'email-04', d: 1, type: 'mc', src: 'cheat',
+    q: 'SMTP is the protocol used to:',
+    choices: ['Send e-mail messages between mail servers', 'Translate mail domain names into IP addresses', 'Let a recipient download messages from their mailbox', 'Encrypt e-mail end to end'],
+    a: 0,
+    why: 'SMTP transfers mail from the sender’s mail server to the recipient’s mail server (and is often also used by a sending user agent to reach its own server). Retrieval uses IMAP or HTTP, and name lookup uses DNS (MX records).' },
+
+  { id: 'email-05', d: 2, type: 'tf', src: 'cheat',
+    q: 'True or false: When one mail server transfers a message to another, the receiving mail server acts as the SMTP client.',
+    a: false,
+    why: 'False. The **sending** mail server is the SMTP client because it initiates the SMTP (TCP) connection, and the receiving server is the SMTP server. Think “whoever opens the connection is the client.”' },
+
+  { id: 'email-06', d: 2, type: 'mc', src: 'cheat',
+    q: 'Why is the sending mail server called the SMTP client?',
+    choices: ['Because it only ever sends and never receives mail', 'Because it initiates the SMTP connection to the receiving server', 'Because it is the one that stores the user’s mailbox', 'Because it runs on a user’s PC'],
+    a: 1,
+    why: 'Client and server labels describe the **role in a particular connection**: the side that initiates is the client. A mail server is not permanently a client; it is an SMTP server whenever other servers deliver mail to it.' },
+
+  { id: 'email-07', d: 2, type: 'tf', src: 'cheat',
+    q: 'True or false: The same mail server can be an SMTP client in one connection and an SMTP server in another.',
+    a: true,
+    why: 'True. Both the client and server sides of SMTP run on every mail server. It acts as a client when sending mail to other servers and as a server when receiving mail from them.' },
+
+  // ---------- Message format ----------
+  { id: 'email-08', d: 1, type: 'mc', src: 'cheat',
+    q: 'An e-mail message consists of:',
+    choices: ['A request line, header lines, then the body', 'Header lines, then a blank line, then the body', 'SMTP commands, then the body', 'The body, then a blank line, then header lines'],
+    a: 1,
+    why: 'Header lines (keyword: value), a blank line (CRLF) separating them from the body, then the body in ASCII. A request line is part of HTTP, and SMTP commands belong to the transfer dialogue, not the message.' },
+
+  { id: 'email-09', d: 2, type: 'multi', src: 'cheat',
+    q: 'Which of these are header lines inside the e-mail message itself, as opposed to SMTP commands? Select all that apply.',
+    choices: ['From:', 'RCPT TO:', 'Subject:', 'MAIL FROM:', 'HELO', 'To:'],
+    a: [0, 2, 5],
+    why: '`To:`, `From:` and `Subject:` are message header lines (RFC 5322). `MAIL FROM:`, `RCPT TO:` and `HELO` are SMTP commands in the handshaking between servers, and they are not part of the message.' },
+
+  { id: 'email-10', d: 2, type: 'short', src: 'ch2-P15',
+    q: 'Textbook P15. What is the difference between `MAIL FROM:` in SMTP and `From:` in the mail message itself?',
+    a: '`MAIL FROM:` is an SMTP command sent by the SMTP client to the SMTP server during handshaking, identifying the sender of the message being transferred. `From:` is not an SMTP command at all. It is a header line inside the mail message that the user agent displays, and it travels as part of the data after the DATA command.',
+    keys: ['SMTP command|command|handshak', 'header line|part of the message|in the message', 'SMTP client|server to server|transfer', 'user agent|displayed|DATA'],
+    why: 'The textbook stresses that these header lines “are different from the SMTP commands … (even though they contain some common words such as ‘from’ and ‘to’).” The commands belong to the transfer dialogue; the headers belong to the message. They can even disagree, as when spam forges `From:`.' },
+
+  { id: 'email-11', d: 3, type: 'mc', src: 'text',
+    q: 'A spam message displays `From: security@yourbank.com`, but during the SMTP transfer the client sent `MAIL FROM: <x77@spam.example>`. What is the correct conclusion?',
+    choices: ['The From: header is just text the sender wrote inside the message, so it need not match MAIL FROM: and can be forged', 'The receiving server rewrote the From: line to match the bank’s MX record', 'This is impossible, because SMTP servers reject messages whose From: differs from MAIL FROM:', 'The From: line must be correct because it was checked by DNS'],
+    a: 0,
+    why: '`From:` is an ordinary header line in the message body handed over after `DATA`, while `MAIL FROM:` is part of the SMTP handshake. Nothing in the textbook’s SMTP description cross-checks the two, which is why forged `From:` lines (as in P17) are common in spam.' },
+
+  { id: 'email-12', d: 2, type: 'mc', src: 'text',
+    q: 'According to RFC 5322, which header lines must every mail message header contain?',
+    choices: ['Subject: only', 'From:, To: and Subject:', 'MAIL FROM: and RCPT TO:', 'From: and To:'],
+    a: 3,
+    why: '“Every header must have a From: header line and a To: header line.” `Subject:` is optional, along with other header lines. `MAIL FROM:` and `RCPT TO:` are SMTP commands, not header lines.' },
+
+  // ---------- Mailbox location / mail access ----------
+  { id: 'email-13', d: 1, type: 'mc', src: 'cheat',
+    q: 'Where are a recipient’s incoming messages stored?',
+    choices: ['On their personal PC or phone, which runs its own mail server', 'On an intermediate relay server chosen by DNS', 'In their mailbox on an always-on, shared mail server', 'In the sender’s message queue until the recipient logs in'],
+    a: 2,
+    why: 'Mailboxes live on an always-on shared mail server. The sender’s queue holds mail only until it is delivered to the recipient’s server, and SMTP does not normally use intermediate servers.' },
+
+  { id: 'email-14', d: 2, type: 'short', src: 'cheat',
+    q: 'Why is a user’s mail server normally not run on the user’s own PC or phone?',
+    a: 'A mail server must receive mail whenever it arrives, which can be at any time. Running it on a personal PC or phone would require that device to be always on and always connected to the Internet, which is impractical for most users. So the user agent runs locally and the mailbox sits on an always-on shared mail server.',
+    keys: ['always on|always online|always connected', 'any time|arrive at any time', 'impractical', 'shared mail server|always-on server'],
+    why: 'This is the cheat-sheet point “a mail server must be always online,” from §2.3.3. If Alice’s server had to talk directly to Bob’s PC, mail would bounce or wait whenever the PC was off.' },
+
+  { id: 'email-15', d: 3, type: 'order', src: 'cheat',
+    q: 'Alice sends Bob a message (Figure 2.15). Put the steps in order.',
+    items: ['Alice’s user agent sends the message to her mail server', 'The message is placed in the message queue of Alice’s mail server', 'The SMTP client on Alice’s server opens a TCP connection to the SMTP server on Bob’s mail server', 'After SMTP handshaking, the client sends the message over the TCP connection', 'Bob’s mail server places the message in Bob’s mailbox', 'Bob’s user agent retrieves the message from his mailbox (IMAP or HTTP)'],
+    why: 'User agent → own server (queue) → direct SMTP/TCP transfer to the recipient’s server → mailbox → recipient pulls it when convenient. The handshake (HELO, MAIL FROM, RCPT TO) comes before the message data.' },
+
+  { id: 'email-16', d: 2, type: 'mc', src: 'cheat',
+    q: 'Why does Alice’s user agent send mail to her own mail server instead of directly to Bob’s mail server?',
+    choices: ['To convert the message from HTTP to SMTP format', 'Because user agents are not allowed to open TCP connections', 'So her mail server can keep retrying if Bob’s server is temporarily unreachable', 'Because only mail servers know Bob’s password'],
+    a: 2,
+    why: 'If the user agent delivered directly and Bob’s server were down, the user agent would have no recourse. Relaying through Alice’s always-on server lets it retry (about every 30 minutes) until Bob’s server is reachable.' },
+
+  { id: 'email-17', d: 1, type: 'mc', src: 'cheat',
+    q: 'Bob reads his mail in the Gmail smartphone app (or Gmail in a browser). Which protocol does his user agent use to fetch messages?',
+    choices: ['DNS', 'HTTP', 'SMTP', 'IMAP'],
+    a: 1,
+    why: 'Web-based mail and smartphone apps such as Gmail use HTTP to retrieve mail, so Bob’s mail server needs an HTTP interface besides its SMTP interface. SMTP can’t be used for retrieval because it is push-only.' },
+
+  { id: 'email-18', d: 1, type: 'mc', src: 'cheat',
+    q: 'Bob uses a desktop client such as Microsoft Outlook to fetch and manage his mail. Which protocol does it typically use?',
+    choices: ['IMAP', 'FTP', 'HTTP', 'SMTP'],
+    a: 0,
+    why: 'Desktop clients like Outlook typically use IMAP (RFC 3501). Web mail and phone apps use HTTP. Both let Bob manage server-side folders.' },
+
+  { id: 'email-19', d: 2, type: 'tf', src: 'cheat',
+    q: 'True or false: Bob’s user agent can use SMTP to download new messages from his mailbox.',
+    a: false,
+    why: 'False. SMTP is strictly a **push** protocol for transferring mail toward a server. Getting messages out of a mailbox is a **pull** operation, so recipients use IMAP or HTTP.' },
+
+  { id: 'email-20', d: 2, type: 'short', src: 'ch2-R16',
+    q: 'Textbook R16. Alice, who has a Web-based e-mail account (such as Gmail), sends a message to Bob, who accesses his mail from his mail server using IMAP. Discuss how the message gets from Alice’s host to Bob’s host, listing the series of application-layer protocols used.',
+    a: 'Alice’s browser sends the message to her mail server over HTTP. Her mail server, acting as an SMTP client, then transfers it to Bob’s mail server over SMTP, and it is placed in Bob’s mailbox. Bob’s user agent then retrieves it from his mail server to his host with IMAP. The series is HTTP → SMTP → IMAP.',
+    keys: ['HTTP', 'SMTP', 'IMAP', 'Alice’s mail server|her mail server|sender’s server', 'Bob’s mail server|mailbox'],
+    why: 'Each hop has its own protocol (Figure 2.16): user agent → own server is SMTP or HTTP (HTTP for Web mail), server → server is always SMTP, and server → recipient is IMAP or HTTP.' },
+
+  { id: 'email-21', d: 3, type: 'mc', src: 'cheat',
+    q: 'On which hop of an e-mail’s journey is SMTP never used?',
+    choices: ['Sender’s mail server → recipient’s mail server', 'SMTP is used on every hop', 'Recipient’s mail server → recipient’s user agent', 'Sender’s user agent → sender’s mail server'],
+    a: 2,
+    why: 'Server → server is always SMTP, and user agent → own server may be SMTP or HTTP. The final hop is a pull, and SMTP only pushes, so it uses IMAP or HTTP.' },
+
+  { id: 'email-22', d: 3, type: 'mc', src: 'text',
+    q: 'Alice sends mail using Web-based e-mail in her browser; Bob reads his mail with Outlook over IMAP. Besides SMTP, which mail server(s) must offer an HTTP interface for this message?',
+    choices: ['Neither; HTTP is never used in e-mail', 'Only Alice’s mail server', 'Both mail servers', 'Only Bob’s mail server'],
+    a: 1,
+    why: 'Alice’s browser submits the message with HTTP, so her server needs an HTTP interface. Bob retrieves with IMAP, so his server needs IMAP (plus SMTP to receive from Alice’s server). A server needs HTTP for retrieval only when its user reads mail via the Web or an app.' },
+
+  { id: 'email-23', d: 2, type: 'tf', src: 'text',
+    q: 'True or false: If Bob reads his mail with the Gmail app, Bob’s mail server needs an HTTP interface as well as an SMTP interface.',
+    a: true,
+    why: 'True. The textbook says the HTTP retrieval case “requires Bob’s mail server to have an HTTP interface as well as an SMTP interface (to communicate with Alice’s mail server).”' },
+
+  { id: 'email-24', d: 2, type: 'mc', src: 'text',
+    q: 'Which mail-access approaches let Bob manage folders kept on his mail server (create folders, move and delete messages, mark them important)?',
+    choices: ['Both HTTP-based access and IMAP', 'Only HTTP', 'Only IMAP', 'Only SMTP'],
+    a: 0,
+    why: '“Both the HTTP and IMAP approaches allow Bob to manage folders, maintained in Bob’s mail server.” SMTP cannot be used for access at all.' },
+
+  // ---------- SMTP details ----------
+  { id: 'email-25', d: 1, type: 'mc', src: 'text',
+    q: 'Which transport service does SMTP rely on to move mail between servers?',
+    choices: ['TCP’s reliable data transfer', 'IP directly, with no transport protocol', 'QUIC streams', 'UDP’s best-effort delivery'],
+    a: 0,
+    why: 'SMTP “uses the reliable data transfer service of TCP,” so it can count on TCP to deliver the message without errors. Losing bytes of an e-mail is not acceptable, which rules out UDP.' },
+
+  { id: 'email-26', d: 1, type: 'num', src: 'text',
+    q: 'The client SMTP has TCP open a connection to which port number on the receiving mail server?',
+    a: 25, unit: '', tol: 0,
+    why: 'SMTP servers listen on well-known port 25. That is why `telnet serverName 25` lets you talk SMTP by hand. Compare HTTP on 80 and DNS on UDP 53.' },
+
+  { id: 'email-27', d: 1, type: 'num', src: 'text',
+    q: 'If Alice’s mail server cannot deliver to Bob’s server, it holds the message and tries again. According to the textbook, roughly how often are reattempts made? Answer in minutes.',
+    a: 30, unit: 'min', tol: 0,
+    why: '“Reattempts are often done every 30 minutes or so; if there is no success after several days, the server removes the message and notifies the sender (Alice) with an e-mail message.”' },
+
+  { id: 'email-28', d: 2, type: 'tf', src: 'text',
+    q: 'True or false: Even when Alice’s mail server is in Hong Kong and Bob’s is in St. Louis, the SMTP TCP connection normally runs directly between the two servers, with no intermediate mail servers.',
+    a: true,
+    why: 'True. SMTP “does not normally use intermediate mail servers.” The TCP connection runs directly between the Hong Kong and St. Louis servers. If Bob’s server is down, the message waits in Alice’s server rather than on some intermediate server.' },
+
+  { id: 'email-29', d: 3, type: 'mc', src: 'text',
+    q: 'Bob’s mail server is down from 9:00 to 12:00. Alice’s server first tries to send her message at 9:05. What happens?',
+    choices: ['The message stays in Alice’s server’s queue, which retries roughly every 30 minutes and delivers it after Bob’s server comes back', 'The message is handed to an intermediate mail server near St. Louis until Bob’s server returns', 'The message is dropped immediately and Alice gets a bounce at 9:05', 'Alice’s user agent must keep retrying from her PC'],
+    a: 0,
+    why: 'The sending server keeps the message in its queue and retries (about every 30 min). Only if there is still no success after **several days** does it give up and notify Alice. No intermediate server is used, and the user agent is out of the loop once the message is in Alice’s server.' },
+
+  { id: 'email-30', d: 2, type: 'mc', src: 'text',
+    q: 'SMTP restricts the whole message, including the body, to 7-bit ASCII. What does this mean for a JPEG photo attachment?',
+    choices: ['It must be encoded into ASCII before SMTP transfer and decoded back to binary afterwards', 'It must be sent with HTTP instead, since SMTP cannot carry images', 'SMTP strips the 8th bit, so the image arrives slightly corrupted', 'Only the header must be ASCII, so the JPEG is sent as raw binary'],
+    a: 0,
+    why: 'Binary multimedia data must be encoded to ASCII before SMTP and decoded after. The restriction covers the **body too**, not just the headers. HTTP has no such requirement.' },
+
+  { id: 'email-31', d: 2, type: 'tf', src: 'text',
+    q: 'True or false: SMTP’s 7-bit ASCII restriction applies only to the header lines; the body may contain raw binary data.',
+    a: false,
+    why: 'False. The textbook says SMTP “restricts the body (not just the headers) of all mail messages to simple 7-bit ASCII.” It made sense in the early 1980s but is a nuisance in the multimedia era.' },
+
+  { id: 'email-32', d: 3, type: 'order', src: 'text',
+    q: 'Order the lines the SMTP **client** (crepes.fr) sends in the textbook transcript, after the server’s 220 greeting.',
+    items: ['HELO crepes.fr', 'MAIL FROM: <alice@crepes.fr>', 'RCPT TO: <bob@hamburger.edu>', 'DATA', 'Do you like ketchup? / How about pickles?', '. (a line with a single period)', 'QUIT'],
+    why: 'Introduce yourself (HELO), give the envelope sender (MAIL FROM) and recipient (RCPT TO), announce the data (DATA), send the message lines, end it with a lone period (CRLF.CRLF), and close (QUIT). The server answers each step with a reply code (250, 354, 250, 221).' },
+
+  { id: 'email-33', d: 1, type: 'num', src: 'text',
+    q: 'How many distinct SMTP commands does the client issue in the textbook’s crepes.fr → hamburger.edu transcript?',
+    a: 5, unit: 'commands', tol: 0,
+    why: 'HELO, MAIL FROM, RCPT TO, DATA, QUIT: five commands. The lone “.” line is not a command; it marks the end of the message data.' },
+
+  { id: 'email-34', d: 1, type: 'mc', src: 'text',
+    q: 'How does an SMTP client mark the end of a message’s data?',
+    choices: ['With a line containing only a single period (CRLF.CRLF)', 'By closing the TCP connection', 'With the QUIT command', 'With a Content-Length header giving the size'],
+    a: 0,
+    why: 'The server’s 354 reply even says so: “end with ‘.’ on a line by itself.” Content-Length is HTTP’s method. QUIT ends the whole session, not a single message, because a persistent connection may carry several messages.' },
+
+  { id: 'email-35', d: 2, type: 'mc', src: 'text',
+    q: 'In the textbook transcript, which reply code does the server send right after the client’s `DATA` command?',
+    choices: ['250', '221', '220', '354'],
+    a: 3,
+    why: '`354 Enter mail, end with "." on a line by itself`. 220 is the greeting when the connection opens, 250 is “OK” (after HELO, MAIL FROM, RCPT TO and the accepted message), and 221 means the server is closing the connection after QUIT.' },
+
+  { id: 'email-36', d: 2, type: 'mc', src: 'text',
+    q: 'Once the TCP connection between the two mail servers is established, who sends the first SMTP line, and what is it?',
+    choices: ['The server, with `250 Hello crepes.fr`', 'The server, with `220 hamburger.edu`', 'The client, with `MAIL FROM: <alice@crepes.fr>`', 'The client, with `HELO crepes.fr`'],
+    a: 1,
+    why: 'The transcript begins `S: 220 hamburger.edu`: the server announces itself first. The client then says `HELO crepes.fr`, and the server answers 250.' },
+
+  { id: 'email-37', d: 3, type: 'short', src: 'ch2-P16',
+    q: 'Textbook P16. How does SMTP mark the end of a message body? How about HTTP? Can HTTP use the same method as SMTP to mark the end of a message body? Explain.',
+    a: 'SMTP marks the end of the body with a line containing only a period (CRLF.CRLF). HTTP uses the Content-Length: header to give the body length in bytes. HTTP cannot use SMTP’s method, because an HTTP body may be binary data (images, video) that could contain the byte sequence CRLF.CRLF, which would be mistaken for the end. SMTP bodies must be 7-bit ASCII text, so the convention works there.',
+    keys: ['single period|CRLF.CRLF|period on a line', 'Content-Length', 'binary', '7-bit ASCII|ASCII', 'no|cannot'],
+    why: 'This is a consequence of the ASCII-only restriction. Because SMTP bodies are text, a reserved text line can safely terminate them. HTTP carries arbitrary bytes, so it must state the length instead.' },
+
+  { id: 'email-38', d: 2, type: 'num', src: 'text',
+    ctx: 'Mail server crepes.fr has 4 messages queued for users at hamburger.edu, 3 for users at pizza.it, and 1 for a user at sushi.jp. It uses SMTP persistent connections.',
+    q: 'How many `MAIL FROM:` commands will crepes.fr send in total?',
+    a: 8, unit: 'commands', tol: 0,
+    why: 'Each message begins with its own `MAIL FROM:`, even when several messages share a connection: 4 + 3 + 1 = 8.' },
+
+  { id: 'email-39', d: 3, type: 'num', src: 'text',
+    ctx: 'Mail server crepes.fr has 4 messages queued for users at hamburger.edu, 3 for users at pizza.it, and 1 for a user at sushi.jp. It uses SMTP persistent connections.',
+    q: 'How many TCP connections does crepes.fr open to deliver all of these messages?',
+    a: 3, unit: 'connections', tol: 0,
+    why: 'Persistent SMTP sends all messages for the same receiving server over one TCP connection, and SMTP connects directly to each destination server. That gives one connection each to hamburger.edu, pizza.it and sushi.jp: 3. There is also one `QUIT` per connection, sent only after that server’s last message.' },
+
+  { id: 'email-40', d: 3, type: 'mc', src: 'text',
+    q: 'crepes.fr sends two separate messages to hamburger.edu over one persistent SMTP connection. Which client command sequence is correct?',
+    choices: ['HELO, MAIL FROM, RCPT TO, RCPT TO, DATA, …, “.”, QUIT', 'HELO, DATA, …, “.”, DATA, …, “.”, QUIT', 'HELO, MAIL FROM, RCPT TO, DATA, …, “.”, QUIT, HELO, MAIL FROM, RCPT TO, DATA, …, “.”, QUIT', 'HELO, MAIL FROM, RCPT TO, DATA, …, “.”, MAIL FROM, RCPT TO, DATA, …, “.”, QUIT'],
+    a: 3,
+    why: 'Over a persistent connection, each message starts with a new `MAIL FROM:` and ends with an isolated period, and `QUIT` comes only once, after all messages. The sequence with QUIT and a second HELO closes and reopens the connection (non-persistent). Two RCPT TO lines before one DATA is **one** message to two recipients. DATA without MAIL FROM/RCPT TO skips the sender and recipient handshake.' },
+
+  // ---------- SMTP vs HTTP; why TCP; handshaking ----------
+  { id: 'email-41', d: 3, type: 'multi', src: 'text',
+    q: 'Which statements correctly compare SMTP and HTTP? Select all that apply.',
+    choices: ['Both can use persistent connections', 'SMTP runs over UDP, while HTTP runs over TCP', 'SMTP is primarily a push protocol, while HTTP is primarily a pull protocol', 'HTTP marks the end of a body with CRLF.CRLF, just like SMTP', 'SMTP requires messages to be 7-bit ASCII, while HTTP does not', 'HTTP puts each object in its own response message, while SMTP places all of a message’s objects in one message'],
+    a: [0, 2, 4, 5],
+    why: 'Push vs pull, ASCII-only vs any bytes, one combined message vs one object per response, and both persistent. Both use TCP. HTTP marks body length with `Content-Length:`, not a lone period (see P16).' },
+
+  { id: 'email-42', d: 2, type: 'short', src: 'ch2-R11',
+    q: 'Textbook R11. Why do HTTP, SMTP and IMAP run on top of TCP rather than on UDP?',
+    a: 'The applications behind these protocols (Web pages, e-mail, mailbox access) need all of their data delivered without loss, without errors and in the correct order. TCP provides this reliable, in-order data transfer, and UDP does not. These applications are elastic and not time-critical, so TCP’s extra delays are acceptable.',
+    keys: ['reliable', 'in order|correct order', 'no loss|without gaps|loss-intolerant|all data', 'UDP does not|UDP provides no|unreliable'],
+    why: 'Figure 2.4/2.5: e-mail, the Web and file transfer are loss-intolerant and elastic, so they choose TCP for reliable data transfer. UDP gives no guarantee that a message ever arrives or arrives in order.' },
+
+  { id: 'email-43', d: 2, type: 'short', src: 'ch2-R10',
+    q: 'Textbook R10. What is meant by a handshaking protocol? Give an example from e-mail.',
+    a: 'A protocol uses handshaking if the two communicating entities first exchange control messages to introduce themselves and set up the transfer before sending the actual data. SMTP does this at the application layer: after the TCP connection opens, client and server exchange HELO/250, MAIL FROM/250 and RCPT TO/250 before DATA. HTTP has no such application-layer handshake. TCP’s connection setup is also a handshake.',
+    keys: ['exchange control|control messages|control packets|introduce', 'before sending data|before the data|before transfer', 'SMTP|HELO|MAIL FROM|RCPT TO', 'TCP|HTTP does not'],
+    why: 'The textbook compares SMTP handshaking to people introducing themselves before talking. During it the client gives the sender’s and recipient’s e-mail addresses.' },
+
+  { id: 'email-44', d: 3, type: 'short', src: 'text',
+    q: 'TCP has already performed its own handshake when the SMTP session starts. What does SMTP’s application-layer handshake add that TCP’s does not?',
+    a: 'TCP’s handshake only sets up a reliable byte stream between two host processes; it knows nothing about mail. SMTP’s handshake has the servers introduce themselves (HELO/220/250) and has the client name the message’s sender (MAIL FROM) and recipient (RCPT TO), which the server accepts or rejects (e.g. “Recipient ok”) before any message data is sent with DATA.',
+    keys: ['TCP|byte stream|connection', 'introduce|HELO', 'sender|MAIL FROM', 'recipient|RCPT TO', 'before data|before DATA|accept'],
+    why: 'Two different layers, two different jobs. Transport-layer setup creates the pipe; the application-layer handshake agrees on who the mail is from and for. That is why the server can answer `250 bob@hamburger.edu ... Recipient ok` before receiving the message.' },
+
+  // ---------- P17 / R17 spam forensics ----------
+  { id: 'email-45', d: 2, type: 'mc', src: 'ch2-P17',
+    q: 'Textbook P17 (first part). In RFC 5321 for SMTP, what does MTA stand for?',
+    choices: ['Mail transmission address', 'Mailbox transfer authority', 'Message transport application', 'Mail transfer agent'],
+    a: 3,
+    why: 'An MTA (mail transfer agent) is software that relays mail between hosts, i.e. a mail server acting as SMTP client/server. Each MTA that handles a message adds a `Received:` header line recording where it got the message.' },
+
+  { id: 'email-46', d: 2, type: 'num', src: 'ch2-R17',
+    ctx: 'Textbook P17 header (all other hosts honest; only the originator is malicious):\n`From - Fri Nov 07 13:41:30 2008`\n`Return-Path: <tennis5@pp33head.com>`\n`Received: from barmail.cs.umass.edu (barmail.cs.umass.edu [128.119.240.3]) by cs.umass.edu (8.13.1/8.12.6) for <hg@cs.umass.edu>; Fri, 7 Nov 2008 13:27:10 -0500`\n`Received: from asusus-4b96 (localhost [127.0.0.1]) by barmail.cs.umass.edu (Spam Firewall) for <hg@cs.umass.edu>; Fri, 7 Nov 2008 13:27:07 -0500 (EST)`\n`Received: from asusus-4b96 ([58.88.21.177]) by barmail.cs.umass.edu for <hg@cs.umass.edu>; Fri, 07 Nov 2008 13:27:07 -0500 (EST)`\n`Received: from [58.88.21.177] by inbnd55.exchangeddd.com; Sat, 8 Nov 2008 01:27:07 +0700`\n`From: "Jonny" <tennis5@pp33head.com>`\n`To: <hg@cs.umass.edu>`\n`Subject: How to secure your savings`',
+    q: 'Textbook R17 (adapted to the header above instead of your own inbox). How many `Received:` header lines does this message have?',
+    a: 4, unit: 'lines', tol: 0,
+    why: 'Count the lines beginning “Received:”. There are 4. Each MTA that handles a message adds one at the top, so reading bottom → top traces the path, oldest hop first. (R17 originally asks you to analyze an e-mail you received; that needs your own mailbox, so the textbook’s P17 header is used instead.)' },
+
+  { id: 'email-47', d: 3, type: 'mc', src: 'ch2-P17',
+    ctx: 'Textbook P17 header (all other hosts honest; only the originator is malicious):\n`From - Fri Nov 07 13:41:30 2008`\n`Return-Path: <tennis5@pp33head.com>`\n`Received: from barmail.cs.umass.edu (barmail.cs.umass.edu [128.119.240.3]) by cs.umass.edu (8.13.1/8.12.6) for <hg@cs.umass.edu>; Fri, 7 Nov 2008 13:27:10 -0500`\n`Received: from asusus-4b96 (localhost [127.0.0.1]) by barmail.cs.umass.edu (Spam Firewall) for <hg@cs.umass.edu>; Fri, 7 Nov 2008 13:27:07 -0500 (EST)`\n`Received: from asusus-4b96 ([58.88.21.177]) by barmail.cs.umass.edu for <hg@cs.umass.edu>; Fri, 07 Nov 2008 13:27:07 -0500 (EST)`\n`Received: from [58.88.21.177] by inbnd55.exchangeddd.com; Sat, 8 Nov 2008 01:27:07 +0700`\n`From: "Jonny" <tennis5@pp33head.com>`\n`To: <hg@cs.umass.edu>`\n`Subject: How to secure your savings`',
+    q: 'Textbook P17. Assuming only the originator is malicious and all other hosts are honest, which host generated this spam?',
+    choices: ['inbnd55.exchangeddd.com', 'asusus-4b96, at IP address 58.88.21.177', 'barmail.cs.umass.edu (128.119.240.3)', 'cs.umass.edu', 'pp33head.com, the domain in the From: and Return-Path: lines'],
+    a: 1,
+    why: 'Read the Received: lines bottom → top and trust only lines written by honest servers. The top two are UMass-internal hops (barmail’s spam firewall on localhost, then cs.umass.edu). barmail is honest, and it recorded receiving the message **directly from asusus-4b96 at 58.88.21.177**. If inbnd55.exchangeddd.com had really relayed the message, barmail would have recorded receiving it from exchangeddd. So the bottom line was written by the originator to fake a trail: its time 01:27:07 +0700 is the very same instant as 13:27:07 −0500. Even taken at face value, it also points to 58.88.21.177. `From:` and `Return-Path:` are text the sender wrote, so pp33head.com proves nothing.' },
+
+  { id: 'email-48', d: 3, type: 'tf', src: 'ch2-P17',
+    ctx: 'Textbook P17 header (all other hosts honest; only the originator is malicious):\n`From - Fri Nov 07 13:41:30 2008`\n`Return-Path: <tennis5@pp33head.com>`\n`Received: from barmail.cs.umass.edu (barmail.cs.umass.edu [128.119.240.3]) by cs.umass.edu (8.13.1/8.12.6) for <hg@cs.umass.edu>; Fri, 7 Nov 2008 13:27:10 -0500`\n`Received: from asusus-4b96 (localhost [127.0.0.1]) by barmail.cs.umass.edu (Spam Firewall) for <hg@cs.umass.edu>; Fri, 7 Nov 2008 13:27:07 -0500 (EST)`\n`Received: from asusus-4b96 ([58.88.21.177]) by barmail.cs.umass.edu for <hg@cs.umass.edu>; Fri, 07 Nov 2008 13:27:07 -0500 (EST)`\n`Received: from [58.88.21.177] by inbnd55.exchangeddd.com; Sat, 8 Nov 2008 01:27:07 +0700`\n`From: "Jonny" <tennis5@pp33head.com>`\n`To: <hg@cs.umass.edu>`\n`Subject: How to secure your savings`',
+    q: 'True or false: The bottom `Received:` line proves that the message passed through inbnd55.exchangeddd.com before it reached barmail.cs.umass.edu.',
+    a: false,
+    why: 'False. The honest server barmail recorded receiving the message straight from 58.88.21.177, not from exchangeddd. A line below the first honest server’s entry could have been written by anyone upstream, here the spammer. Its timestamp (Sat 01:27:07 +0700 = Fri 13:27:07 −0500) matches barmail’s to the second, another sign it was fabricated. Only Received: lines added by honest MTAs can be trusted.' }
+]);
